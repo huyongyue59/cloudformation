@@ -1,0 +1,129 @@
+
+
+# AWSTemplateFormatVersion: 2010-09-09
+# Description: |
+  
+Parameters:
+  keypair:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: infra-hyy
+
+  instancetype:
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - t1.micro 
+      - t3.micro
+  Co:
+      Type: String
+      Default: Qlite
+    
+  Env:
+    Type: String
+    Default: Dev
+    AllowedValues:
+      - Dev #开发
+      - Prod #本番
+      - Test #测试
+      - Stating #最终测试
+      - Poc # 检证
+
+  Author:
+    Type: String
+    Default: hyy2
+
+  
+# Metadata:
+  
+# Mappings:
+  
+# Conditions:
+  
+
+
+Resources:
+# bas
+  bassg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "for bas" #Required
+      GroupName: !Sub "${Co}-${Env}-${Author}-bas"
+      SecurityGroupEgress: 
+      - IpProtocol: -1
+        FromPort: -1
+        ToPort: -1
+        CidrIp: 0.0.0.0/0
+      SecurityGroupIngress: 
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+      Tags: 
+      - Key: Name
+        Value: !Sub ${Co}-${Env}-${Author}-bas
+      VpcId: !ImportValue vpc
+
+
+  websg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "for web" # Required
+      GroupName: !Sub "${Co}-${Env}-${Author}-web"
+      SecurityGroupEgress: 
+      - IpProtocol: -1
+        FromPort: -1
+        ToPort: -1
+        CidrIp: 0.0.0.0/0
+      SecurityGroupIngress: 
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      Tags: 
+      - Key: Name
+        Value: !Sub ${Co}-${Env}-${Author}-web
+      VpcId: !ImportValue vpc
+# ec2
+  base:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-030cf0a1edb8636ab
+      InstanceType: !Sub ${instancetype}
+      KeyName: !Sub ${keypair}
+      NetworkInterfaces: 
+      - AssociatePublicIpAddress: "true"
+        DeviceIndex: "0"
+        GroupSet: 
+          - Ref: bassg
+        SubnetId: !ImportValue pub1a
+      Tags: 
+      - Key: Name
+        Value: !Sub ${Co}-${Env}-${Author}-bas
+
+
+  web1a:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-030cf0a1edb8636ab
+      InstanceType: !Sub ${instancetype}
+      KeyName: !Sub ${keypair}
+      NetworkInterfaces: 
+      - AssociatePublicIpAddress: "false"
+        DeviceIndex: "0"
+        GroupSet: 
+          - Ref: websg
+        SubnetId: !ImportValue pri1a
+      Tags: 
+      - Key: Name
+        Value: !Sub ${Co}-${Env}-${Author}-web1a
+
+
+
+# Transform:
+  
+# Outputs:
