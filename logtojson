@@ -1,0 +1,20 @@
+#!/bin/bash
+
+LOG_FILE="/var/log/user_commands.json"
+USER_NAME=$(whoami)
+
+# 无限循环读取命令
+while true; do
+    read -e -p "$ " CMD           # 显示 PS1 提示符并读取命令
+    [[ -z "$CMD" ]] && continue   # 空命令忽略
+    [[ "$CMD" == "exit" ]] && break
+
+    TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
+    OUTPUT=$(eval "$CMD" 2>&1)    # 执行命令并捕获 stdout/stderr
+
+    # 将命令和输出写入 JSON
+    echo "{\"timestamp\":\"$TIMESTAMP\",\"user\":\"$USER_NAME\",\"cmd\":\"$CMD\",\"output\":\"$(echo "$OUTPUT" | sed 's/"/\\"/g')\"}" >> "$LOG_FILE"
+
+    # 显示输出
+    echo "$OUTPUT"
+done
