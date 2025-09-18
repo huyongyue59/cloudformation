@@ -1,38 +1,42 @@
 #!/bin/bash
+# ----------------------------------------
+# Shell Wrapper - 命令记录到 JSON 日志
+# ----------------------------------------
 
-# 日志文件路径，根据用户名区分
 USER_NAME=$(whoami)
-LOG_FILE="/var/log/${USER_NAME}_commands.json"
+LOG_DIR="/data/logs"
+LOG_FILE="$LOG_DIR/${USER_NAME}_commands.json"
 
-# 确保日志文件存在并可写
+# 创建日志目录和文件，并设置权限
+mkdir -p "$LOG_DIR"
+chmod 775 "$LOG_DIR"
+chown root:root "$LOG_DIR"
 touch "$LOG_FILE"
 chmod 664 "$LOG_FILE"
 
-# 捕获 EXIT 信号，防止 wrapper 被 exit 中断
+# 防止 exit 退出整个 wrapper
 trap '' EXIT
 
-# ------------------------------
-# 定义函数记录命令
-# ------------------------------
+# 定义记录函数
 log_command() {
-    local CMD=$(history 1 | sed 's/^[ ]*[0-9]*[ ]*//')   # 获取最后一条命令
+    local CMD=$(history 1 | sed 's/^[ ]*[0-9]*[ ]*//')
     [[ -z "$CMD" ]] && return
 
-    TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
-    OUTPUT=$(eval "$CMD" 2>&1)
-    ESCAPED_OUTPUT=$(echo "$OUTPUT" | sed ':a;N;$!ba;s/"/\\"/g; s/\n/\\n/g')
+    local TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
+    local OUTPUT=$(eval "$CMD" 2>&1)
+    # 替换双引号和换行符为 JSON 安全格式
+    local ESCAPED_OUTPUT=$(echo "$OUTPUT" | sed ':a;N;$!ba;s/"/\\"/g; s/\n/\\n/g')
 
-    # 安全写入 JSON 文件，多终端同时写入不会冲突
+    # 安全写入日志（支持多终端同时写）
     (
         flock -x 200
         echo "{\"timestamp\":\"$TIMESTAMP\",\"user\":\"$USER_NAME\",\"cmd\":\"$CMD\",\"output\":\"$ESCAPED_OUTPUT\"}" >&200
     ) 200>>"$LOG_FILE"
+
+    # 输出命令结果
+    echo "$OUTPUT"
 }
 
-# ------------------------------
-# PROMPT_COMMAND 会在每次命令执行前调用
-# ------------------------------
+# 导出函数，PROMPT_COMMAND 调用
+export -f log_command
 export PROMPT_COMMAND=log_command
-
-# 保持原 shell 正常
-exec "$SHELL"
