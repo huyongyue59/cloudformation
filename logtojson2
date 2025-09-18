@@ -1,0 +1,20 @@
+#!/bin/bash
+
+LOG_FILE="/var/log/user_commands.json"
+USER_NAME=$(whoami)
+
+while true; do
+    read -e -p "$ " CMD
+    [[ -z "$CMD" ]] && continue
+    [[ "$CMD" == "exit" ]] && break
+
+    TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
+    OUTPUT=$(eval "$CMD" 2>&1)
+
+    # 替换双引号为\"，换行符替换成 \n
+    ESCAPED_OUTPUT=$(echo "$OUTPUT" | sed ':a;N;$!ba;s/"/\\"/g; s/\n/\\n/g')
+
+    echo "{\"timestamp\":\"$TIMESTAMP\",\"user\":\"$USER_NAME\",\"cmd\":\"$CMD\",\"output\":\"$ESCAPED_OUTPUT\"}" >> "$LOG_FILE"
+
+    echo "$OUTPUT"
+done
