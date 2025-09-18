@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# 日志文件路径，根据用户名区分
+USER_NAME=$(whoami)
+LOG_FILE="/var/log/${USER_NAME}_commands.json"
+
+# 确保日志文件存在并可写
+touch "$LOG_FILE"
+chmod 664 "$LOG_FILE"
+
+# 捕获 EXIT 信号，防止 wrapper 被 exit 中断
+trap '' EXIT
+
+# ------------------------------
+# 定义函数记录命令
+# ------------------------------
+log_command() {
+    local CMD=$(history 1 | sed 's/^[ ]*[0-9]*[ ]*//')   # 获取最后一条命令
+    [[ -z "$CMD" ]] && return
+
+    TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
+    OUTPUT=$(eval "$CMD" 2>&1)
+    ESCAPED_OUTPUT=$(echo "$OUTPUT" | sed ':a;N;$!ba;s/"/\\"/g; s/\n/\\n/g')
+
+    # 安全写入 JSON 文件，多终端同时写入不会冲突
+    (
+        flock -x 200
+        echo "{\"timestamp\":\"$TIMESTAMP\",\"user\":\"$USER_NAME\",\"cmd\":\"$CMD\",\"output\":\"$ESCAPED_OUTPUT\"}" >&200
+    ) 200>>"$LOG_FILE"
+}
+
+# ------------------------------
+# PROMPT_COMMAND 会在每次命令执行前调用
+# ------------------------------
+export PROMPT_COMMAND=log_command
+
+# 保持原 shell 正常
+exec "$SHELL"
