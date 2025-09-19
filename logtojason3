@@ -1,71 +1,44 @@
 #!/bin/bash
-# ----------------------------------------
-# Shell Wrapper - 命令记录到 JSON 日志
-# 记录“原始登录用户”（不会随 sudo/su 变）
-# ----------------------------------------
+# interactive logger - 固定原始登录用户并把每条命令以 NDJSON 追加到 user-specific 文件
 
-# —— 1) 在 shell 初始化时确定并固定原始登录用户名 —— 
-# 如果已经存在 ORIG_LOGIN_USER（比如子 shell 继承）就保留它
+# 固定原始登录用户（只在第一次赋值）
 export ORIG_LOGIN_USER="${ORIG_LOGIN_USER:-$(id -un)}"
-
-# 可选：把原始 UID 也保存（有时用来做权限判断）
-export ORIG_LOGIN_UID="${ORIG_LOGIN_UID:-$(id -u)}"
 
 LOG_DIR="/data/logs"
 LOG_FILE="$LOG_DIR/${ORIG_LOGIN_USER}_commands.json"
 
-# —— 2) 创建日志目录（保证普通用户可以在该目录写入自己的文件）
-# 建议：让目录对用户可写（用户登录时会创建属于自己的文件）
+# 保证日志目录存在（存在则不报错）
 mkdir -p "$LOG_DIR"
-# 使目录可进可写（owner/group/others 的设置请根据你的运维策略调整）
-chmod 775 "$LOG_DIR"
-# 注意：不要强制 chown 成 root:root，否则普通用户无法创建自己的文件
-# chown root:root "$LOG_DIR"   # <-- 不要这样，除非你知道在做什么
+chmod 775 "$LOG_DIR" 2>/dev/null || true
 
-# 如果日志文件不存在，则由当前（原始）用户创建并设置合适权限
+# 如果文件不存在，尝试由当前进程创建（属主将是创建时的实际用户）
 if [ ! -f "$LOG_FILE" ]; then
-    # 仅当当前实际有效 UID 等于原始 UID 时创建文件并设置权限（常见情况）
-    if [ "$(id -u)" -eq "$ORIG_LOGIN_UID" ]; then
-        touch "$LOG_FILE"
-        chmod 664 "$LOG_FILE"
-        # 用户创建的文件默认 owner 会是该用户，无需 chown
-    else
-        # 如果当前不是原始用户（例如脚本被 root source），确保文件存在（root 可以创建）
-        touch "$LOG_FILE"
-        chmod 664 "$LOG_FILE"
-    fi
+    touch "$LOG_FILE" 2>/dev/null || true
+    chmod 664 "$LOG_FILE" 2>/dev/null || true
 fi
 
-# 防止 exit 退出整个 wrapper（按你原来的逻辑保留）
-trap '' EXIT
+while true; do
+    read -e -p "$ " CMD
+    [[ -z "$CMD" ]] && continue
+    [[ "$CMD" == "exit" ]] && break
 
-# 定义记录函数
-log_command() {
-    # 从历史里取最后一条命令（和你原来逻辑相同）
-    local CMD
-    CMD=$(history 1 | sed 's/^[ ]*[0-9]*[ ]*//')
-    [[ -z "$CMD" ]] && return
-
-    local TIMESTAMP
     TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
 
-    # 小心：eval 会执行命令并捕获输出（这是你想要的行为）
-    local OUTPUT
+    # 执行命令并捕获输出
     OUTPUT=$(eval "$CMD" 2>&1)
 
-    # JSON 安全转义（把双引号和换行处理掉）
-    local ESCAPED_OUTPUT
-    ESCAPED_OUTPUT=$(printf '%s' "$OUTPUT" | sed ':a;N;$!ba;s/"/\\"/g; s/\n/\\n/g')
+    # JSON-safe 转义：先转义反斜杠，再转义双引号，再把换行换成 \n
+    ESCAPED_CMD=$(printf '%s' "$CMD" | sed ':a;N;$!ba;s/\\/\\\\/g; s/"/\\"/g; s/\n/\\n/g')
+    ESCAPED_OUTPUT=$(printf '%s' "$OUTPUT" | sed ':a;N;$!ba;s/\\/\\\\/g; s/"/\\"/g; s/\n/\\n/g')
 
-    # 使用 flock 原子写入（防止多终端并发写入冲突）
+    JSON_LINE="{\"timestamp\":\"$TIMESTAMP\",\"user\":\"$ORIG_LOGIN_USER\",\"cmd\":\"$ESCAPED_CMD\",\"output\":\"$ESCAPED_OUTPUT\"}"
+
+    # 原子追加，防止多个会话写冲突
     (
         flock -x 200
-        printf '%s\n' "{\"timestamp\":\"$TIMESTAMP\",\"user\":\"$ORIG_LOGIN_USER\",\"cmd\":\"$CMD\",\"output\":\"$ESCAPED_OUTPUT\"}" >&200
+        printf '%s\n' "$JSON_LINE" >&200
     ) 200>>"$LOG_FILE"
 
-    # 把命令执行的输出返还给终端
+    # 把命令输出回显到终端
     printf '%s\n' "$OUTPUT"
-}
-
-export -f log_command
-export PROMPT_COMMAND=log_command
+done
