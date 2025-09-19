@@ -1,0 +1,34 @@
+#!/bin/bash
+LOG_DIR="/data/logs"
+USER_NAME=$(whoami)
+RAW_LOG="$LOG_DIR/${USER_NAME}_commands.log"
+JSON_LOG="$LOG_DIR/${USER_NAME}_commands.json"
+
+: > "$JSON_LOG"
+
+# 正则匹配提示符（可根据实际情况调整）
+PROMPT_REGEX="^[^@]+@[^:]+:.*[$#] "
+
+CMD=""
+OUTPUT=""
+
+process_block() {
+    # 跳过空输入
+    [[ -z "$CMD" ]] && return
+
+    TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
+    ESCAPED_OUTPUT=$(printf "%s" "$OUTPUT" | sed 's/"/\\"/g; s/\n/\\n/g')
+    echo "{\"timestamp\":\"$TIMESTAMP\",\"user\":\"$USER_NAME\",\"cmd\":\"$CMD\",\"output\":\"$ESCAPED_OUTPUT\"}" >> "$JSON_LOG"
+}
+
+tail -n0 -F "$RAW_LOG" | while IFS= read -r line; do
+    if [[ "$line" =~ $PROMPT_REGEX ]]; then
+        # 遇到提示符 → 完成上一个命令
+        process_block
+        CMD="${line#*\$ }"   # 提取命令（去掉提示符前缀）
+        OUTPUT=""
+    else
+        # 累积输出
+        OUTPUT+="$line"$'\n'
+    fi
+done
