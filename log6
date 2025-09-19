@@ -1,21 +1,28 @@
 # 日志目录
 LOG_DIR="/data/logs"
 mkdir -p "$LOG_DIR"
+chmod 777 "$LOG_DIR"  # 确保所有用户可写
 
 record_command() {
     local USER_NAME=$(logname 2>/dev/null || whoami)
     local LOG_FILE="$LOG_DIR/${USER_NAME}_commands.json"
 
-    # 获取最近一条历史命令
-    local CMD=$(history 1 | sed 's/^[ ]*[0-9]*[ ]*//')
+    # 当前正在执行的命令
+    local CMD="$BASH_COMMAND"
     [[ -z "$CMD" ]] && return
+    [[ "$CMD" == "record_command" ]] && return  # 避免记录自身
 
-    local TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
-    local OUTPUT=$(eval "$CMD" 2>&1)
-    local ESCAPED_OUTPUT=$(echo "$OUTPUT" | sed ':a;N;$!ba;s/"/\\"/g; s/\n/\\n/g')
+    # 捕获命令输出
+    local OUTPUT
+    OUTPUT=$(eval "$CMD" 2>&1)
 
-    echo "{\"timestamp\":\"$TIMESTAMP\",\"user\":\"$USER_NAME\",\"cmd\":\"$CMD\",\"output\":\"$ESCAPED_OUTPUT\"}" >> "$LOG_FILE"
+    # JSON 安全处理
+    local ESCAPED_OUTPUT
+    ESCAPED_OUTPUT=$(echo "$OUTPUT" | sed ':a;N;$!ba;s/"/\\"/g; s/\n/\\n/g')
+
+    # 写入日志
+    echo "{\"timestamp\":\"$(date '+%Y-%m-%dT%H:%M:%S%z')\",\"user\":\"$USER_NAME\",\"cmd\":\"$CMD\",\"output\":\"$ESCAPED_OUTPUT\"}" >> "$LOG_FILE"
 }
 
-export -f record_command
-PROMPT_COMMAND="record_command"
+# 使用 DEBUG trap 捕获每条命令
+trap record_command DEBUG
