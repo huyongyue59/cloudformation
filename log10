@@ -3,7 +3,7 @@
 # SSH 命令记录器 - 单文件 JSON + exec 替换父 shell
 # -------------------------------------------
 
-# 日志目录（提前存在且可写）
+# 日志目录（确保提前存在且普通用户可写）
 LOG_DIR="/data/logs"
 mkdir -p "$LOG_DIR"
 
@@ -11,12 +11,13 @@ mkdir -p "$LOG_DIR"
 ORIG_USER=$(logname 2>/dev/null || whoami)
 JSON_LOG="$LOG_DIR/${ORIG_USER}_commands.json"
 
-# 登录覆盖旧日志
+# 登录时覆盖旧日志
 > "$JSON_LOG"
 
 # 使用 exec 替换父 shell，启动子 shell 捕获所有命令输出
 exec script -q -f /dev/stdout bash --login | while IFS= read -r line; do
     TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
+    # JSON 安全处理
     ESCAPED=$(echo "$line" | sed ':a;N;$!ba;s/"/\\"/g; s/\n/\\n/g')
     echo "{\"timestamp\":\"$TIMESTAMP\",\"user\":\"$ORIG_USER\",\"line\":\"$ESCAPED\"}" >> "$JSON_LOG"
 done
