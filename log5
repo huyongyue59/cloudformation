@@ -1,0 +1,35 @@
+#!/bin/bash
+# -------------------------------
+# SSH 登录 VM 时记录命令到 JSON
+# -------------------------------
+
+# 当前真实用户
+REAL_USER=$(logname 2>/dev/null || whoami)
+LOG_DIR="/data/logs"
+LOG_FILE="$LOG_DIR/${REAL_USER}_commands.json"
+
+# 确保日志目录存在并可写
+mkdir -p "$LOG_DIR"
+if [[ ! -w "$LOG_DIR" ]]; then
+    echo "Error: $LOG_DIR is not writable. Please fix permissions."
+    exit 1
+fi
+
+# 主循环
+while true; do
+    read -e -p "$ " CMD
+    [[ -z "$CMD" ]] && continue
+
+    # 如果命令是 exit，优先退出 SSH
+    if [[ "$CMD" == "exit" ]]; then
+        exit 0
+    fi
+
+    TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
+    OUTPUT=$(eval "$CMD" 2>&1)
+    ESCAPED_OUTPUT=$(echo "$OUTPUT" | sed ':a;N;$!ba;s/"/\\"/g; s/\n/\\n/g')
+
+    echo "{\"timestamp\":\"$TIMESTAMP\",\"user\":\"$REAL_USER\",\"cmd\":\"$CMD\",\"output\":\"$ESCAPED_OUTPUT\"}" >> "$LOG_FILE"
+
+    echo "$OUTPUT"
+done
