@@ -1,28 +1,40 @@
+#!/bin/bash
+# -------------------------------------------
+# SSH 命令记录器 - 可直接执行
+# -------------------------------------------
+
 # 日志目录
 LOG_DIR="/data/logs"
 mkdir -p "$LOG_DIR"
 chmod 777 "$LOG_DIR"  # 确保所有用户可写
 
+# 获取当前登录用户
+USER_NAME=$(logname 2>/dev/null || whoami)
+LOG_FILE="$LOG_DIR/${USER_NAME}_commands.json"
+
+# 提示信息
+echo "Command logger active. All commands will be recorded to $LOG_FILE"
+echo "Type 'exit' to quit SSH normally."
+
+# 启动交互式 shell
+# 使用 bash 的 --noprofile --norc 避免递归读取 rc 文件
+bash --rcfile <(
+    # 临时 rc 文件内容
+    cat <<'EOF'
+# trap DEBUG 捕获每条命令
 record_command() {
-    local USER_NAME=$(logname 2>/dev/null || whoami)
-    local LOG_FILE="$LOG_DIR/${USER_NAME}_commands.json"
-
-    # 当前正在执行的命令
-    local CMD="$BASH_COMMAND"
+    CMD="$BASH_COMMAND"
     [[ -z "$CMD" ]] && return
-    [[ "$CMD" == "record_command" ]] && return  # 避免记录自身
+    [[ "$CMD" == "record_command" ]] && return
+    [[ "$CMD" == "exit" ]] && return
 
-    # 捕获命令输出
-    local OUTPUT
+    TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
     OUTPUT=$(eval "$CMD" 2>&1)
-
-    # JSON 安全处理
-    local ESCAPED_OUTPUT
     ESCAPED_OUTPUT=$(echo "$OUTPUT" | sed ':a;N;$!ba;s/"/\\"/g; s/\n/\\n/g')
 
-    # 写入日志
-    echo "{\"timestamp\":\"$(date '+%Y-%m-%dT%H:%M:%S%z')\",\"user\":\"$USER_NAME\",\"cmd\":\"$CMD\",\"output\":\"$ESCAPED_OUTPUT\"}" >> "$LOG_FILE"
+    echo "{\"timestamp\":\"$TIMESTAMP\",\"user\":\"'"$USER_NAME"'\",\"cmd\":\"$CMD\",\"output\":\"$ESCAPED_OUTPUT\"}" >> "'"$LOG_FILE"'"
 }
 
-# 使用 DEBUG trap 捕获每条命令
 trap record_command DEBUG
+EOF
+)
