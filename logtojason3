@@ -1,42 +1,71 @@
 #!/bin/bash
 # ----------------------------------------
 # Shell Wrapper - 命令记录到 JSON 日志
+# 记录“原始登录用户”（不会随 sudo/su 变）
 # ----------------------------------------
 
-USER_NAME=$(whoami)
+# —— 1) 在 shell 初始化时确定并固定原始登录用户名 —— 
+# 如果已经存在 ORIG_LOGIN_USER（比如子 shell 继承）就保留它
+export ORIG_LOGIN_USER="${ORIG_LOGIN_USER:-$(id -un)}"
+
+# 可选：把原始 UID 也保存（有时用来做权限判断）
+export ORIG_LOGIN_UID="${ORIG_LOGIN_UID:-$(id -u)}"
+
 LOG_DIR="/data/logs"
-LOG_FILE="$LOG_DIR/${USER_NAME}_commands.json"
+LOG_FILE="$LOG_DIR/${ORIG_LOGIN_USER}_commands.json"
 
-# 创建日志目录和文件，并设置权限
+# —— 2) 创建日志目录（保证普通用户可以在该目录写入自己的文件）
+# 建议：让目录对用户可写（用户登录时会创建属于自己的文件）
 mkdir -p "$LOG_DIR"
+# 使目录可进可写（owner/group/others 的设置请根据你的运维策略调整）
 chmod 775 "$LOG_DIR"
-chown root:root "$LOG_DIR"
-touch "$LOG_FILE"
-chmod 664 "$LOG_FILE"
+# 注意：不要强制 chown 成 root:root，否则普通用户无法创建自己的文件
+# chown root:root "$LOG_DIR"   # <-- 不要这样，除非你知道在做什么
 
-# 防止 exit 退出整个 wrapper
+# 如果日志文件不存在，则由当前（原始）用户创建并设置合适权限
+if [ ! -f "$LOG_FILE" ]; then
+    # 仅当当前实际有效 UID 等于原始 UID 时创建文件并设置权限（常见情况）
+    if [ "$(id -u)" -eq "$ORIG_LOGIN_UID" ]; then
+        touch "$LOG_FILE"
+        chmod 664 "$LOG_FILE"
+        # 用户创建的文件默认 owner 会是该用户，无需 chown
+    else
+        # 如果当前不是原始用户（例如脚本被 root source），确保文件存在（root 可以创建）
+        touch "$LOG_FILE"
+        chmod 664 "$LOG_FILE"
+    fi
+fi
+
+# 防止 exit 退出整个 wrapper（按你原来的逻辑保留）
 trap '' EXIT
 
 # 定义记录函数
 log_command() {
-    local CMD=$(history 1 | sed 's/^[ ]*[0-9]*[ ]*//')
+    # 从历史里取最后一条命令（和你原来逻辑相同）
+    local CMD
+    CMD=$(history 1 | sed 's/^[ ]*[0-9]*[ ]*//')
     [[ -z "$CMD" ]] && return
 
-    local TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
-    local OUTPUT=$(eval "$CMD" 2>&1)
-    # 替换双引号和换行符为 JSON 安全格式
-    local ESCAPED_OUTPUT=$(echo "$OUTPUT" | sed ':a;N;$!ba;s/"/\\"/g; s/\n/\\n/g')
+    local TIMESTAMP
+    TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
 
-    # 安全写入日志（支持多终端同时写）
+    # 小心：eval 会执行命令并捕获输出（这是你想要的行为）
+    local OUTPUT
+    OUTPUT=$(eval "$CMD" 2>&1)
+
+    # JSON 安全转义（把双引号和换行处理掉）
+    local ESCAPED_OUTPUT
+    ESCAPED_OUTPUT=$(printf '%s' "$OUTPUT" | sed ':a;N;$!ba;s/"/\\"/g; s/\n/\\n/g')
+
+    # 使用 flock 原子写入（防止多终端并发写入冲突）
     (
         flock -x 200
-        echo "{\"timestamp\":\"$TIMESTAMP\",\"user\":\"$USER_NAME\",\"cmd\":\"$CMD\",\"output\":\"$ESCAPED_OUTPUT\"}" >&200
+        printf '%s\n' "{\"timestamp\":\"$TIMESTAMP\",\"user\":\"$ORIG_LOGIN_USER\",\"cmd\":\"$CMD\",\"output\":\"$ESCAPED_OUTPUT\"}" >&200
     ) 200>>"$LOG_FILE"
 
-    # 输出命令结果
-    echo "$OUTPUT"
+    # 把命令执行的输出返还给终端
+    printf '%s\n' "$OUTPUT"
 }
 
-# 导出函数，PROMPT_COMMAND 调用
 export -f log_command
 export PROMPT_COMMAND=log_command
