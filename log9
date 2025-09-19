@@ -1,18 +1,46 @@
+#!/bin/bash
+# -------------------------------------------
+# SSH 命令记录器 - 支持 sudo / su 继续写入原用户日志
+# -------------------------------------------
+
+# 原始登录用户
+if [[ -z "$ORIG_USER" ]]; then
+    export ORIG_USER=$(logname 2>/dev/null || whoami)
+fi
+
+# 日志目录和文件
+LOG_DIR="/data/logs"
+LOG_FILE="$LOG_DIR/${ORIG_USER}_commands.json"
+
+# 登录 shell初始化覆盖旧日志（只执行一次）
+if [[ $- == *i* && -z "$LOG_INITIALIZED" ]]; then
+    > "$LOG_FILE"
+    export LOG_INITIALIZED=1
+fi
+
 record_command() {
-    local USER_NAME=$(logname 2>/dev/null || whoami)
-    local LOG_FILE="/data/logs/${USER_NAME}_commands.json"
-
-    # 获取用户输入的最后一条历史命令
-    local CMD=$(history 1 | sed 's/^[ ]*[0-9]*[ ]*//')
+    # 获取用户原始命令
+    local CMD
+    CMD=$(history 1 | sed 's/^[ ]*[0-9]*[ ]*//')
     [[ -z "$CMD" ]] && return
-
-    local TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
+    [[ "$CMD" == "record_command" ]] && return
+    [[ "$CMD" == "exit" ]] && return
+    [[ "$CMD" == "logout" ]] && return
 
     # 执行命令并捕获输出
     local OUTPUT
     OUTPUT=$(eval "$CMD" 2>&1)
+
+    # JSON 安全处理
     local ESCAPED_OUTPUT
     ESCAPED_OUTPUT=$(echo "$OUTPUT" | sed ':a;N;$!ba;s/"/\\"/g; s/\n/\\n/g')
 
-    echo "{\"timestamp\":\"$TIMESTAMP\",\"user\":\"$USER_NAME\",\"cmd\":\"$CMD\",\"output\":\"$ESCAPED_OUTPUT\"}" >> "$LOG_FILE"
+    # 写入原始登录用户的 JSON
+    echo "{\"timestamp\":\"$(date '+%Y-%m-%dT%H:%M:%S%z')\",\"user\":\"$ORIG_USER\",\"cmd\":\"$CMD\",\"output\":\"$ESCAPED_OUTPUT\"}" >> "$LOG_FILE"
 }
+
+export -f record_command
+trap record_command DEBUG
+
+# 自动在子 shell 也 source 自己，保持 ORIG_USER
+PROMPT_COMMAND='[[ -n "$ORIG_USER" ]] || export ORIG_USER=$(logname 2>/dev/null || whoami); record_command'
