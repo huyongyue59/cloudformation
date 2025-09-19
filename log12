@@ -1,0 +1,27 @@
+#!/bin/bash
+# -------------------------------------------
+# SSH 命令记录器 - 实时 JSON，exec 替换父 shell
+# -------------------------------------------
+
+LOG_DIR="/data/logs"
+mkdir -p "$LOG_DIR"
+
+ORIG_USER=$(logname 2>/dev/null || whoami)
+JSON_LOG="$LOG_DIR/${ORIG_USER}_commands.json"
+
+# 登录覆盖旧日志
+> "$JSON_LOG"
+
+# 启动 script 替换父 shell，输出到临时文件
+TEMP_LOG="$LOG_DIR/${ORIG_USER}_temp.log"
+> "$TEMP_LOG"
+
+# exec 替换父 shell
+exec script -q "$TEMP_LOG" bash --login &
+
+# 实时把 TEMP_LOG 转 JSON
+tail -F "$TEMP_LOG" | while IFS= read -r line; do
+    TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
+    ESCAPED=$(echo "$line" | sed ':a;N;$!ba;s/"/\\"/g; s/\n/\\n/g')
+    echo "{\"timestamp\":\"$TIMESTAMP\",\"user\":\"$ORIG_USER\",\"line\":\"$ESCAPED\"}" >> "$JSON_LOG"
+done
