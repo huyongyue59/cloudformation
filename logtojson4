@@ -1,0 +1,39 @@
+#!/bin/bash
+# -------------------------------
+# 用户命令记录到 JSON 日志
+# -------------------------------
+
+# 获取当前真实用户（不随 su 切换变化）
+REAL_USER=$(logname 2>/dev/null || whoami)
+LOG_DIR="/data/logs"
+LOG_FILE="$LOG_DIR/${REAL_USER}_commands.json"
+
+# 创建日志目录（如果不存在）
+mkdir -p "$LOG_DIR"
+
+# 主循环
+while true; do
+    # 显示提示符并读命令
+    read -e -p "$ " CMD
+    [[ -z "$CMD" ]] && continue
+
+    # 如果命令是 exit，不退出脚本，只打印换行
+    if [[ "$CMD" == "exit" ]]; then
+        echo
+        continue
+    fi
+
+    TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
+
+    # 执行命令并捕获输出
+    OUTPUT=$(eval "$CMD" 2>&1)
+
+    # JSON 安全处理
+    ESCAPED_OUTPUT=$(echo "$OUTPUT" | sed ':a;N;$!ba;s/"/\\"/g; s/\n/\\n/g')
+
+    # 写入日志文件
+    echo "{\"timestamp\":\"$TIMESTAMP\",\"user\":\"$REAL_USER\",\"cmd\":\"$CMD\",\"output\":\"$ESCAPED_OUTPUT\"}" >> "$LOG_FILE"
+
+    # 输出结果
+    echo "$OUTPUT"
+done
