@@ -1,0 +1,41 @@
+#!/bin/bash
+# -------------------------------------------
+# SSH 命令记录器 - 单文件 JSON，兼容各种 Linux
+# -------------------------------------------
+
+LOG_DIR="/data/logs"
+mkdir -p "$LOG_DIR"
+
+ORIG_USER=$(logname 2>/dev/null || whoami)
+JSON_LOG="$LOG_DIR/${ORIG_USER}_commands.json"
+
+# 登录覆盖旧日志
+> "$JSON_LOG"
+
+# 使用 shell wrapper + PROMPT_COMMAND 捕获每条命令及输出
+record_command() {
+    local CMD="$BASH_COMMAND"
+    [[ -z "$CMD" ]] && return
+    [[ "$CMD" == "record_command" ]] && return  # 避免记录自身
+
+    # 捕获命令输出
+    local OUTPUT
+    OUTPUT=$(eval "$CMD" 2>&1)
+
+    # JSON 安全处理
+    local ESCAPED
+    ESCAPED=$(echo "$OUTPUT" | sed ':a;N;$!ba;s/"/\\"/g; s/\n/\\n/g')
+
+    # 写入 JSON 文件
+    echo "{\"timestamp\":\"$(date '+%Y-%m-%dT%H:%M:%S%z')\",\"user\":\"$ORIG_USER\",\"cmd\":\"$CMD\",\"output\":\"$ESCAPED\"}" >> "$JSON_LOG"
+
+    # 输出命令结果
+    echo "$OUTPUT"
+}
+
+# 导出函数，并在每条命令执行前调用
+export -f record_command
+export PROMPT_COMMAND=record_command
+
+# 保证 exec 替换父 shell，exit 直接退出 SSH
+exec bash --login
