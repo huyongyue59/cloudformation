@@ -1,38 +1,30 @@
 #!/usr/bin/env python3
-import re
 import time
 import json
-import os
 import getpass
+import os
+import re
 
 LOG_DIR = "/data/logs"
 USER_NAME = getpass.getuser()
 RAW_LOG = f"{LOG_DIR}/{USER_NAME}_commands.log"
 JSON_LOG = f"{LOG_DIR}/{USER_NAME}_commands.json"
 
-PROMPT_REGEX = re.compile(r'^[^@]+@[^:]+:.*[$#] ')
-
-def process_block(cmd, output_lines, f_json):
-    if not cmd.strip():
-        return
-    record = {
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-        "user": USER_NAME,
-        "cmd": cmd,
-        "output": "\n".join(output_lines).strip()
-    }
-    f_json.write(json.dumps(record, ensure_ascii=False) + "\n")
-    f_json.flush()
+# ANSI 转义码正则，用于去掉颜色/控制字符
+ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 # 等待日志文件出现
 while not os.path.exists(RAW_LOG):
     time.sleep(1)
 
-with open(RAW_LOG, "r") as f_raw, open(JSON_LOG, "a") as f_json:
-    f_raw.seek(0, os.SEEK_END)  # 从文件末尾开始读
-    cmd = None
-    output_lines = []
+def clean_line(line):
+    """去掉 ANSI 控制字符"""
+    return ANSI_ESCAPE.sub('', line)
 
+cmd = None
+output_lines = []
+
+with open(RAW_LOG, "r") as f_raw, open(JSON_LOG, "w") as f_json:
     while True:
         line = f_raw.readline()
         if not line:
@@ -40,11 +32,25 @@ with open(RAW_LOG, "r") as f_raw, open(JSON_LOG, "a") as f_json:
             continue
 
         line = line.rstrip("\n")
+        line = clean_line(line)
+        if not line.strip():
+            continue  # 忽略空行
 
-        if PROMPT_REGEX.match(line):
+        # 假设每条命令以 "$ " 或 "# " 结尾的提示符开始
+        if line.endswith("$") or line.endswith("#"):
+            # 上一条命令写入 JSON
             if cmd is not None:
-                process_block(cmd, output_lines, f_json)
-            cmd = PROMPT_REGEX.sub("", line)
+                record = {
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                    "user": USER_NAME,
+                    "cmd": cmd,
+                    "output": "\n".join(output_lines).strip()
+                }
+                f_json.write(json.dumps(record, ensure_ascii=False) + "\n")
+                f_json.flush()
+
+            # 记录新命令
+            cmd = line
             output_lines = []
         else:
             output_lines.append(line)
