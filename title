@@ -1,23 +1,38 @@
-sudo tee -a /etc/profile <<'EOF'
+sudo tee /etc/profile <<'EOF'
+# /etc/profile
 
 # 仅在交互 SSH 登录时执行
-if [[ $- == *i* ]] && [ -n "$SSH_CONNECTION" ]; then
-    # 获取原始登录用户（OS Login 用户）
+if [[ $- == *i* ]] && [ -n "$SSH_CONNECTION" ]]; then
     LOGIN_USER=$(logname 2>/dev/null || whoami)
 
     # ASCII 欢迎
     if command -v figlet >/dev/null 2>&1; then
         figlet "Google VM"
+        echo "prd"
     fi
 
-    # 登录信息
     echo "----------------------------------------"
     echo "User: $LOGIN_USER"
     echo "Hostname: $(hostname)"
     echo "Uptime: $(uptime -p)"
     echo "IP: $(hostname -I | awk '{print $1}')"
     echo "SSH From: $SSH_CLIENT"
+
+    # 上次登录信息
+    LAST_LOGIN=$(last -n 2 "$LOGIN_USER" | tail -n 1)
+    if [[ -n "$LAST_LOGIN" ]]; then
+        echo "Last Login: $LAST_LOGIN"
+    fi
+
+    # CPU 型号
+    CPU_MODEL=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs)
+    echo "CPU: $CPU_MODEL"
+
+    # 系统版本和架构
+    OS_INFO=$(lsb_release -d 2>/dev/null | cut -f2-)
+    ARCH=$(uname -m)
+    echo "OS: $OS_INFO ($ARCH)"
+
     echo "----------------------------------------"
 fi
-
 EOF
