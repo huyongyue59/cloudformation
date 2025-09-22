@@ -1,6 +1,9 @@
 sudo tee /etc/update-motd.d/99-custom <<'EOF'
 #!/bin/bash
 
+# 获取原登录用户
+USER_NAME=$(logname 2>/dev/null || whoami)
+
 # ASCII 大字
 if command -v figlet >/dev/null 2>&1; then
     figlet "Debian VM"
@@ -8,7 +11,7 @@ fi
 
 # 登录信息
 echo "----------------------------------------"
-echo "User: $(whoami)"
+echo "User: $USER_NAME"
 echo "Hostname: $(hostname)"
 echo "Uptime: $(uptime -p)"
 echo "Users logged in: $(who | wc -l)"
