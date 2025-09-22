@@ -1,0 +1,17 @@
+sudo tee /etc/update-motd.d/99-custom <<'EOF'
+#!/bin/bash
+
+# ASCII 大字
+if command -v figlet >/dev/null 2>&1; then
+    figlet "Debian VM"
+fi
+
+# 登录信息
+echo "----------------------------------------"
+echo "User: $(whoami)"
+echo "Hostname: $(hostname)"
+echo "Uptime: $(uptime -p)"
+echo "Users logged in: $(who | wc -l)"
+echo "IP Address: $(hostname -I | awk '{print $1}')"
+echo "----------------------------------------"
+EOF
