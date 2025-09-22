@@ -1,0 +1,62 @@
+variable "project_id" {
+  type    = string
+  default = "your-gcp-project-id"
+}
+
+variable "zone" {
+  type    = string
+  default = "us-central1-a"
+}
+
+source "googlecompute" "debian_vm" {
+  project_id  = var.project_id
+  zone        = var.zone
+  machine_type = "e2-medium"
+  image_family = "debian-12"
+  image_project = "debian-cloud"
+}
+
+build {
+  name    = "debian-tools-image"
+  sources = ["source.googlecompute.debian_vm"]
+
+  provisioner "shell" {
+    inline = [
+      # 更新系统
+      "sudo apt update",
+      "sudo apt upgrade -y",
+
+      # 安装常用 apt 软件
+      "sudo apt install -y zip unzip jq wget telnet git",
+
+      # 安装 gcloud CLI 并锁定版本
+      "sudo apt install -y google-cloud-cli",
+      "sudo apt-mark hold google-cloud-cli",
+
+      # 安装 Docker
+      "sudo apt install -y ca-certificates curl gnupg lsb-release",
+      "sudo mkdir -p /etc/apt/keyrings",
+      "curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg",
+      "echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable\" | sudo tee /etc/apt/sources.list.d/docker.list",
+      "sudo apt update",
+      "sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin",
+      "sudo apt-mark hold docker-ce docker-ce-cli containerd.io docker-compose-plugin",
+
+      # 安装 kubectl
+      "curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg",
+      "echo \"deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main\" | sudo tee /etc/apt/sources.list.d/kubernetes.list",
+      "sudo apt update",
+      "sudo apt install -y kubectl",
+      "sudo apt-mark hold kubectl",
+
+      # 安装 helm
+      "curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash",
+      "sudo apt-mark hold helm",
+
+      # 安装 Argo CD CLI
+      "curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64",
+      "sudo chmod +x /usr/local/bin/argocd",
+      "sudo chown root:root /usr/local/bin/argocd"
+    ]
+  }
+}
