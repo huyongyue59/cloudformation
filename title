@@ -1,8 +1,8 @@
-sudo tee /etc/profile <<'EOF'
 # /etc/profile
 
-# 仅在交互 SSH 登录时执行
-if [[ $- == *i* ]] && [ -n "$SSH_CONNECTION" ]]; then
+# 仅在交互式 SSH 登录时执行
+if [[ $- == *i* && -n "$SSH_CONNECTION" ]]; then
+    # 获取原始登录用户（OS Login 用户）
     LOGIN_USER=$(logname 2>/dev/null || whoami)
 
     # ASCII 欢迎
@@ -18,7 +18,7 @@ if [[ $- == *i* ]] && [ -n "$SSH_CONNECTION" ]]; then
     echo "IP: $(hostname -I | awk '{print $1}')"
     echo "SSH From: $SSH_CLIENT"
 
-    # 上次登录信息
+    # 上次登录信息（忽略当前登录）
     LAST_LOGIN=$(last -n 2 "$LOGIN_USER" | tail -n 1)
     if [[ -n "$LAST_LOGIN" ]]; then
         echo "Last Login: $LAST_LOGIN"
@@ -35,4 +35,3 @@ if [[ $- == *i* ]] && [ -n "$SSH_CONNECTION" ]]; then
 
     echo "----------------------------------------"
 fi
-EOF
