@@ -1,20 +1,23 @@
-sudo tee /etc/update-motd.d/99-custom <<'EOF'
-#!/bin/bash
+sudo tee -a /etc/profile <<'EOF'
 
-# 获取原登录用户
-USER_NAME=$(logname 2>/dev/null || whoami)
+# 仅在交互 SSH 登录时执行
+if [[ $- == *i* ]] && [ -n "$SSH_CONNECTION" ]; then
+    # 获取原始登录用户（OS Login 用户）
+    LOGIN_USER=$(logname 2>/dev/null || whoami)
 
-# ASCII 大字
-if command -v figlet >/dev/null 2>&1; then
-    figlet "Debian VM"
+    # ASCII 欢迎
+    if command -v figlet >/dev/null 2>&1; then
+        figlet "Google VM"
+    fi
+
+    # 登录信息
+    echo "----------------------------------------"
+    echo "User: $LOGIN_USER"
+    echo "Hostname: $(hostname)"
+    echo "Uptime: $(uptime -p)"
+    echo "IP: $(hostname -I | awk '{print $1}')"
+    echo "SSH From: $SSH_CLIENT"
+    echo "----------------------------------------"
 fi
 
-# 登录信息
-echo "----------------------------------------"
-echo "User: $USER_NAME"
-echo "Hostname: $(hostname)"
-echo "Uptime: $(uptime -p)"
-echo "Users logged in: $(who | wc -l)"
-echo "IP Address: $(hostname -I | awk '{print $1}')"
-echo "----------------------------------------"
 EOF
