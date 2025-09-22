@@ -1,8 +1,6 @@
-# /etc/profile
-
+sudo tee -a /etc/profile <<'EOF'
 # 仅在交互式 SSH 登录时执行
 if [[ $- == *i* && -n "$SSH_CONNECTION" ]]; then
-    # 获取原始登录用户（OS Login 用户）
     LOGIN_USER=$(logname 2>/dev/null || whoami)
 
     # ASCII 欢迎
@@ -35,3 +33,4 @@ if [[ $- == *i* && -n "$SSH_CONNECTION" ]]; then
 
     echo "----------------------------------------"
 fi
+EOF
