@@ -1,0 +1,7 @@
+if [ -z "$UNDER_SCRIPT" ] && [ -n "$SSH_CONNECTION" ]; then
+    LOG_DIR="/var/log/ssh_sessions"
+    LOG_FILE="$LOG_DIR/$(whoami)_$(date +%Y%m%d_%H%M%S)_$$.log"
+
+    export UNDER_SCRIPT=1
+    exec script -q -f "$LOG_FILE"
+fi
